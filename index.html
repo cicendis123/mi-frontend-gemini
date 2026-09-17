@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mi Chatbot con Gemini</title>
+  <!-- Librería para convertir Markdown a HTML -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
+    textarea { width: 100%; height: 90px; margin-bottom: 10px; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box; }
+    button { padding: 10px 20px; background-color: #0070f3; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; }
+    button:disabled { background-color: #ccc; }
+    #respuesta { margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef; }
+  </style>
+</head>
+<body>
+  <h2>Consultar a Gemini AI</h2>
+  <textarea id="promptInput" placeholder="Escribe tu pregunta aquí..."></textarea>
+  <button id="sendBtn" onclick="enviarConsulta()">Enviar</button>
+
+  <div id="respuesta">La respuesta aparecerá aquí...</div>
+
+  <script>
+    async function enviarConsulta() {
+      const input = document.getElementById('promptInput');
+      const prompt = input.value;
+      const respuestaDiv = document.getElementById('respuesta');
+      const sendBtn = document.getElementById('sendBtn');
+
+      if (!prompt.trim()) return;
+
+      sendBtn.disabled = true;
+      respuestaDiv.innerHTML = "<em>Pensando respuesta...</em>";
+
+      try {
+        const res = await fetch('https://mi-backend-gemini.vercel.app/api/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: prompt })
+        });
+
+        const data = await res.json();
+
+        if (res.ok) {
+          // Parsea el texto Markdown a HTML limpio
+          respuestaDiv.innerHTML = marked.parse(data.result);
+        } else {
+          respuestaDiv.innerText = "Error: " + (data.error || "No se pudo procesar");
+        }
+      } catch (error) {
+        respuestaDiv.innerText = "Error de conexión con el backend.";
+      } finally {
+        sendBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
