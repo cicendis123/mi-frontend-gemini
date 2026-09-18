@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Mi Asistente Gemini</title>
+  <title>Mi Asistente Gemini Multimodal</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
@@ -20,12 +20,19 @@
     .model { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
     .model p { margin-bottom: 8px; }
     .model p:last-child { margin-bottom: 0; }
+    .img-preview { max-width: 100%; border-radius: 8px; margin-top: 8px; display: block; }
     
-    .input-container { padding: 16px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 12px; }
+    .preview-bar { padding: 8px 16px; background: #0f172a; display: none; align-items: center; gap: 10px; border-top: 1px solid #334155; }
+    .preview-bar img { height: 40px; border-radius: 6px; }
+    .remove-img { color: #ef4444; cursor: pointer; font-weight: bold; font-size: 14px; }
+
+    .input-container { padding: 16px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 8px; align-items: center; }
     textarea { flex: 1; height: 48px; background: #1e293b; border: 1px solid #475569; border-radius: 10px; color: #fff; padding: 12px; font-size: 14px; resize: none; outline: none; transition: border 0.2s; }
     textarea:focus { border-color: #3b82f6; }
     
-    button { background: #2563eb; color: white; border: none; padding: 0 20px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .file-btn { background: #334155; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .file-btn:hover { background: #475569; }
+    button { background: #2563eb; color: white; border: none; padding: 0 20px; height: 48px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
     button:hover { background: #1d4ed8; }
     button:disabled { background: #475569; cursor: not-allowed; }
   </style>
@@ -35,14 +42,22 @@
   <div class="chat-card">
     <div class="chat-header">
       <span class="status-dot"></span>
-      <h3 style="font-size: 16px; font-weight: 600;">Gemini Assistant (Live Stream)</h3>
+      <h3 style="font-size: 16px; font-weight: 600;">Gemini Assistant (Multimodal)</h3>
     </div>
 
     <div class="chat-box" id="chatBox">
-      <div class="msg model">¡Hola! 👋 Escribe un mensaje para ver la respuesta en tiempo real.</div>
+      <div class="msg model">¡Hola! 👋 Escribe un mensaje o adjunta una imagen para analizarla.</div>
+    </div>
+
+    <div class="preview-bar" id="previewBar">
+      <img id="imgPreview" src="" alt="Vista previa">
+      <span style="font-size: 12px; color: #94a3b8;">Imagen adjunta</span>
+      <span class="remove-img" onclick="quitarImagen()">✕</span>
     </div>
 
     <div class="input-container">
+      <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="seleccionarImagen(event)">
+      <button class="file-btn" onclick="document.getElementById('fileInput').click()">📷</button>
       <textarea id="promptInput" placeholder="Escribe un mensaje..."></textarea>
       <button id="sendBtn" onclick="enviarConsulta()">Enviar</button>
     </div>
@@ -50,8 +65,8 @@
 
   <script>
     let history = [];
+    let selectedImageData = null;
 
-    // Permitir enviar con la tecla Enter (sin presionar Shift)
     document.getElementById('promptInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -59,22 +74,60 @@
       }
     });
 
+    function seleccionarImagen(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const base64String = evt.target.result.split(',')[1];
+        selectedImageData = {
+          inlineData: {
+            mimeType: file.type,
+            data: base64String
+          }
+        };
+        document.getElementById('imgPreview').src = evt.target.result;
+        document.getElementById('previewBar').style.display = 'flex';
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function quitarImagen() {
+      selectedImageData = null;
+      document.getElementById('fileInput').value = '';
+      document.getElementById('previewBar').style.display = 'none';
+    }
+
     async function enviarConsulta() {
       const input = document.getElementById('promptInput');
       const prompt = input.value.trim();
       const chatBox = document.getElementById('chatBox');
       const sendBtn = document.getElementById('sendBtn');
 
-      if (!prompt) return;
+      if (!prompt && !selectedImageData) return;
 
-      // Renderizar mensaje del usuario
-      chatBox.innerHTML += `<div class="msg user">${prompt}</div>`;
-      history.push({ role: 'user', parts: [{ text: prompt }] });
+      const parts = [];
+      let userHtml = '';
+
+      if (selectedImageData) {
+        parts.push(selectedImageData);
+        const imgSrc = `data:${selectedImageData.inlineData.mimeType};base64,${selectedImageData.inlineData.data}`;
+        userHtml += `<img src="${imgSrc}" class="img-preview"><br>`;
+      }
+
+      if (prompt) {
+        parts.push({ text: prompt });
+        userHtml += prompt;
+      }
+
+      chatBox.innerHTML += `<div class="msg user">${userHtml}</div>`;
+      history.push({ role: 'user', parts: parts });
 
       input.value = '';
+      quitarImagen();
       sendBtn.disabled = true;
 
-      // Crear la burbuja vacía para la respuesta de la IA
       const modelDiv = document.createElement('div');
       modelDiv.className = 'msg model';
       modelDiv.innerHTML = '...';
@@ -82,18 +135,15 @@
       chatBox.scrollTop = chatBox.scrollHeight;
 
       try {
-        const res = await fetch('https://mi-backend-gemini.vercel.app/api/generate', {
+        // REEMPLAZA ESTA URL CON TU DOMINIO REAL DE VERCEL
+        const res = await fetch('https://TU-URL-REAL-DE-VERCEL.vercel.app/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: history })
         });
 
-        if (!res.ok) {
-          const errData = await res.json().catch(() => null);
-          throw new Error(errData?.error || 'Error al conectar con la API');
-        }
+        if (!res.ok) throw new Error('Error al conectar con la API');
 
-        // Lectura en tiempo real del flujo de transmisión (Streaming)
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedText = '';
@@ -107,7 +157,6 @@
           chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Guardar respuesta final en el historial
         history.push({ role: 'model', parts: [{ text: accumulatedText }] });
 
       } catch (error) {
