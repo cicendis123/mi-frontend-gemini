@@ -20,7 +20,7 @@
     .model { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
     .model p { margin-bottom: 8px; }
     .model p:last-child { margin-bottom: 0; }
-    .img-preview { max-width: 100%; border-radius: 8px; margin-bottom: 8px; display: block; }
+    .img-preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-bottom: 8px; display: block; object-fit: contain; }
     
     .preview-bar { padding: 8px 16px; background: #0f172a; display: none; align-items: center; gap: 10px; border-top: 1px solid #334155; }
     .preview-bar img { height: 40px; border-radius: 6px; }
@@ -46,12 +46,12 @@
     </div>
 
     <div class="chat-box" id="chatBox">
-      <div class="msg model">¡Hola! 👋 Escribe un mensaje o adjunta una imagen para analizarla.</div>
+      <div class="msg model">¡Hola! 👋 Envía una imagen o una pregunta para ayudarte.</div>
     </div>
 
     <div class="preview-bar" id="previewBar">
       <img id="imgPreview" src="" alt="Vista previa">
-      <span style="font-size: 12px; color: #94a3b8;">Imagen adjunta y optimizada</span>
+      <span style="font-size: 12px; color: #94a3b8;">Imagen lista</span>
       <span class="remove-img" onclick="quitarImagen()">✕</span>
     </div>
 
@@ -74,7 +74,7 @@
       }
     });
 
-    // Compresión y escalado automático de imágenes en el cliente
+    // Compresión ultra ligera (Max 600px y calidad 0.5)
     function seleccionarImagen(e) {
       const file = e.target.files[0];
       if (!file) return;
@@ -84,20 +84,19 @@
         const img = new Image();
         img.onload = function() {
           const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 1024;
-          const MAX_HEIGHT = 1024;
+          const MAX_SIZE = 600;
           let width = img.width;
           let height = img.height;
 
           if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
             }
           } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
             }
           }
 
@@ -106,8 +105,7 @@
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
 
-          // Genera el Base64 comprimido
-          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.5);
           const base64String = compressedDataUrl.split(',')[1];
 
           selectedImageData = {
@@ -139,22 +137,35 @@
 
       if (!prompt && !selectedImageData) return;
 
-      const parts = [];
+      const currentParts = [];
+      const historyParts = [];
       let userHtml = '';
 
       if (selectedImageData) {
-        parts.push(selectedImageData);
+        // La imagen solo se envía en la petición actual
+        currentParts.push(selectedImageData);
         const imgSrc = `data:${selectedImageData.inlineData.mimeType};base64,${selectedImageData.inlineData.data}`;
         userHtml += `<img src="${imgSrc}" class="img-preview">`;
       }
 
       if (prompt) {
-        parts.push({ text: prompt });
+        currentParts.push({ text: prompt });
+        historyParts.push({ text: prompt });
         userHtml += `<div>${prompt}</div>`;
+      } else if (selectedImageData) {
+        historyParts.push({ text: "[Imagen enviada por el usuario]" });
       }
 
       chatBox.innerHTML += `<div class="msg user">${userHtml}</div>`;
-      history.push({ role: 'user', parts: parts });
+
+      // Construimos el payload de envío combinando el historial liviano con el input actual
+      const payloadContents = [
+        ...history,
+        { role: 'user', parts: currentParts }
+      ];
+
+      // Guardamos en historial una versión en texto para no saturar el servidor
+      history.push({ role: 'user', parts: historyParts });
 
       input.value = '';
       quitarImagen();
@@ -167,16 +178,16 @@
       chatBox.scrollTop = chatBox.scrollHeight;
 
       try {
-        // ASEGÚRATE DE USAR TU DOMINIO REAL DE VERCEL A CONTINUACIÓN:
+        // REEMPLAZA ESTA URL CON TU DOMINIO REAL EN VERCEL
         const res = await fetch('https://TU-URL-REAL-DE-VERCEL.vercel.app/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: history })
+          body: JSON.stringify({ contents: payloadContents })
         });
 
         if (!res.ok) {
           const errData = await res.json().catch(() => null);
-          throw new Error(errData?.error || 'Error en la solicitud al servidor');
+          throw new Error(errData?.error || 'Error al conectar con el servidor');
         }
 
         const reader = res.body.getReader();
