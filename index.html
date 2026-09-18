@@ -8,18 +8,23 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    
     .chat-card { width: 100%; max-width: 600px; height: 85vh; background: #1e293b; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); overflow: hidden; border: 1px solid #334155; }
     .chat-header { padding: 18px 24px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 12px; }
     .status-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; display: inline-block; }
+    
     .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
     .msg { max-width: 80%; padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; word-break: break-word; }
+    
     .user { align-self: flex-end; background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
     .model { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
     .model p { margin-bottom: 8px; }
     .model p:last-child { margin-bottom: 0; }
+    
     .input-container { padding: 16px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 12px; }
     textarea { flex: 1; height: 48px; background: #1e293b; border: 1px solid #475569; border-radius: 10px; color: #fff; padding: 12px; font-size: 14px; resize: none; outline: none; transition: border 0.2s; }
     textarea:focus { border-color: #3b82f6; }
+    
     button { background: #2563eb; color: white; border: none; padding: 0 20px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
     button:hover { background: #1d4ed8; }
     button:disabled { background: #475569; cursor: not-allowed; }
@@ -34,7 +39,7 @@
     </div>
 
     <div class="chat-box" id="chatBox">
-      <div class="msg model">¡Hola! 👋 Escribe un mensaje para ver las respuestas en tiempo real.</div>
+      <div class="msg model">¡Hola! 👋 Escribe un mensaje para ver la respuesta en tiempo real.</div>
     </div>
 
     <div class="input-container">
@@ -46,6 +51,7 @@
   <script>
     let history = [];
 
+    // Permitir enviar con la tecla Enter (sin presionar Shift)
     document.getElementById('promptInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -61,13 +67,14 @@
 
       if (!prompt) return;
 
+      // Renderizar mensaje del usuario
       chatBox.innerHTML += `<div class="msg user">${prompt}</div>`;
       history.push({ role: 'user', parts: [{ text: prompt }] });
 
       input.value = '';
       sendBtn.disabled = true;
 
-      // Creamos la burbuja de respuesta vacía
+      // Crear la burbuja vacía para la respuesta de la IA
       const modelDiv = document.createElement('div');
       modelDiv.className = 'msg model';
       modelDiv.innerHTML = '...';
@@ -75,15 +82,19 @@
       chatBox.scrollTop = chatBox.scrollHeight;
 
       try {
+        // REEMPLAZA ESTA URL CON TU DOMINIO REAL DE VERCEL SI ES NECESARIO
         const res = await fetch('https://mi-backend-gemini.vercel.app/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ contents: history })
         });
 
-        if (!res.ok) throw new Error('Error en el servidor');
+        if (!res.ok) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(errData?.error || 'Error al conectar con la API');
+        }
 
-        // Leemos la transmisión continuamente
+        // Lectura en tiempo real del flujo de transmisión (Streaming)
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let accumulatedText = '';
@@ -97,12 +108,12 @@
           chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Guardamos el texto final en la memoria
+        // Guardar respuesta final en el historial
         history.push({ role: 'model', parts: [{ text: accumulatedText }] });
 
       } catch (error) {
         modelDiv.style.color = '#ef4444';
-        modelDiv.innerText = 'Error al generar la respuesta.';
+        modelDiv.innerText = `Error: ${error.message}`;
       } finally {
         sendBtn.disabled = false;
         chatBox.scrollTop = chatBox.scrollHeight;
