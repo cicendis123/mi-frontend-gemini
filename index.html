@@ -2,55 +2,99 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Mi Chatbot con Gemini</title>
-  <!-- Librería para convertir Markdown a HTML -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Asistente Gemini</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 40px auto; padding: 20px; }
-    textarea { width: 100%; height: 90px; margin-bottom: 10px; padding: 10px; border-radius: 6px; border: 1px solid #ccc; font-size: 14px; box-sizing: border-box; }
-    button { padding: 10px 20px; background-color: #0070f3; color: white; border: none; cursor: pointer; border-radius: 6px; font-weight: bold; }
-    button:disabled { background-color: #ccc; }
-    #respuesta { margin-top: 20px; padding: 15px; background-color: #f8f9fa; border-radius: 6px; border: 1px solid #e9ecef; }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    
+    .chat-card { width: 100%; max-width: 600px; height: 85vh; background: #1e293b; border-radius: 16px; display: flex; flex-direction: column; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); overflow: hidden; border: 1px solid #334155; }
+    .chat-header { padding: 18px 24px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; align-items: center; gap: 12px; }
+    .status-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; display: inline-block; }
+    
+    .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+    .msg { max-width: 80%; padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; word-break: break-word; }
+    
+    .user { align-self: flex-end; background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
+    .model { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
+    .model p { margin-bottom: 8px; }
+    .model p:last-child { margin-bottom: 0; }
+    
+    .input-container { padding: 16px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 12px; }
+    textarea { flex: 1; height: 48px; background: #1e293b; border: 1px solid #475569; border-radius: 10px; color: #fff; padding: 12px; font-size: 14px; resize: none; outline: none; transition: border 0.2s; }
+    textarea:focus { border-color: #3b82f6; }
+    
+    button { background: #2563eb; color: white; border: none; padding: 0 20px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #475569; cursor: not-allowed; }
   </style>
 </head>
 <body>
-  <h2>Consultar a Gemini AI</h2>
-  <textarea id="promptInput" placeholder="Escribe tu pregunta aquí..."></textarea>
-  <button id="sendBtn" onclick="enviarConsulta()">Enviar</button>
 
-  <div id="respuesta">La respuesta aparecerá aquí...</div>
+  <div class="chat-card">
+    <div class="chat-header">
+      <span class="status-dot"></span>
+      <h3 style="font-size: 16px; font-weight: 600;">Gemini Assistant</h3>
+    </div>
+
+    <div class="chat-box" id="chatBox">
+      <div class="msg model">¡Hola, Carlos! 👋 ¿En qué te puedo ayudar hoy?</div>
+    </div>
+
+    <div class="input-container">
+      <textarea id="promptInput" placeholder="Escribe un mensaje..."></textarea>
+      <button id="sendBtn" onclick="enviarConsulta()">Enviar</button>
+    </div>
+  </div>
 
   <script>
+    let history = [];
+
+    // Enviar mensaje con la tecla Enter (sin Shift)
+    document.getElementById('promptInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        enviarConsulta();
+      }
+    });
+
     async function enviarConsulta() {
       const input = document.getElementById('promptInput');
-      const prompt = input.value;
-      const respuestaDiv = document.getElementById('respuesta');
+      const prompt = input.value.trim();
+      const chatBox = document.getElementById('chatBox');
       const sendBtn = document.getElementById('sendBtn');
 
-      if (!prompt.trim()) return;
+      if (!prompt) return;
 
+      chatBox.innerHTML += `<div class="msg user">${prompt}</div>`;
+      history.push({ role: 'user', parts: [{ text: prompt }] });
+
+      input.value = '';
       sendBtn.disabled = true;
-      respuestaDiv.innerHTML = "<em>Pensando respuesta...</em>";
+      chatBox.scrollTop = chatBox.scrollHeight;
 
       try {
         const res = await fetch('https://mi-backend-gemini.vercel.app/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ prompt: prompt })
+          body: JSON.stringify({ contents: history })
         });
 
         const data = await res.json();
 
         if (res.ok) {
-          // Parsea el texto Markdown a HTML limpio
-          respuestaDiv.innerHTML = marked.parse(data.result);
+          const replyText = data.result;
+          chatBox.innerHTML += `<div class="msg model">${marked.parse(replyText)}</div>`;
+          history.push({ role: 'model', parts: [{ text: replyText }] });
         } else {
-          respuestaDiv.innerText = "Error: " + (data.error || "No se pudo procesar");
+          chatBox.innerHTML += `<div class="msg model" style="color: #ef4444;">Error: ${data.error}</div>`;
         }
       } catch (error) {
-        respuestaDiv.innerText = "Error de conexión con el backend.";
+        chatBox.innerHTML += `<div class="msg model" style="color: #ef4444;">Error de conexión.</div>`;
       } finally {
         sendBtn.disabled = false;
+        chatBox.scrollTop = chatBox.scrollHeight;
       }
     }
   </script>
