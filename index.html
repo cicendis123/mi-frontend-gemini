@@ -82,7 +82,6 @@
       chatBox.scrollTop = chatBox.scrollHeight;
 
       try {
-        // REEMPLAZA ESTA URL CON TU DOMINIO REAL DE VERCEL SI ES NECESARIO
         const res = await fetch('https://mi-backend-gemini.vercel.app/api/generate', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
