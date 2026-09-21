@@ -17,15 +17,31 @@
     .clear-btn { background: transparent; border: 1px solid #475569; color: #94a3b8; padding: 6px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; transition: all 0.2s; }
     .clear-btn:hover { background: #ef444422; color: #ef4444; border-color: #ef4444; }
 
-    .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
-    .msg { max-width: 80%; padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; word-break: break-word; }
+    .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; }
+    .msg-wrapper { display: flex; flex-direction: column; max-width: 80%; }
+    .msg-wrapper.user { align-self: flex-end; }
+    .msg-wrapper.model { align-self: flex-start; }
+
+    .msg { padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; word-break: break-word; position: relative; }
     
-    .user { align-self: flex-end; background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
-    .model { align-self: flex-start; background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
-    .model p { margin-bottom: 8px; }
-    .model p:last-child { margin-bottom: 0; }
+    .user .msg { background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
+    .model .msg { background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
+    .model .msg p { margin-bottom: 8px; }
+    .model .msg p:last-child { margin-bottom: 0; }
     .img-preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-bottom: 8px; display: block; object-fit: contain; }
+
+    /* Botón de copiar */
+    .msg-actions { display: flex; gap: 8px; margin-top: 4px; align-self: flex-start; }
+    .copy-btn { background: transparent; border: none; color: #64748b; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; transition: color 0.2s; }
+    .copy-btn:hover { color: #94a3b8; background: #33415555; }
     
+    /* Animación de carga (Typing Indicator) */
+    .typing-dots { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
+    .typing-dots span { width: 6px; height: 6px; background-color: #94a3b8; border-radius: 50%; animation: blink 1.4s infinite ease-in-out both; }
+    .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } }
+
     .preview-bar { padding: 8px 16px; background: #0f172a; display: none; align-items: center; gap: 10px; border-top: 1px solid #334155; }
     .preview-bar img { height: 40px; border-radius: 6px; }
     .remove-img { color: #ef4444; cursor: pointer; font-weight: bold; font-size: 14px; margin-left: auto; }
@@ -73,7 +89,6 @@
     let uiHistory = [];
     let selectedImageData = null;
 
-    // Cargar historial desde localStorage al abrir la app
     window.addEventListener('DOMContentLoaded', () => {
       const savedHistory = localStorage.getItem('gemini_history');
       const savedUiHistory = localStorage.getItem('gemini_ui_history');
@@ -83,8 +98,7 @@
         uiHistory = JSON.parse(savedUiHistory);
         renderUiHistory();
       } else {
-        // Mensaje inicial por defecto si no hay historial guardado
-        document.getElementById('chatBox').innerHTML = `<div class="msg model">¡Hola! 👋 Envía una imagen o una pregunta para ayudarte.</div>`;
+        document.getElementById('chatBox').innerHTML = `<div class="msg-wrapper model"><div class="msg">¡Hola! 👋 Envía una imagen o una pregunta para ayudarte.</div></div>`;
       }
     });
 
@@ -97,16 +111,38 @@
       const chatBox = document.getElementById('chatBox');
       chatBox.innerHTML = '';
       uiHistory.forEach(item => {
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg-wrapper ${item.role}`;
+        
         const div = document.createElement('div');
-        div.className = `msg ${item.role}`;
+        div.className = 'msg';
+        div.innerHTML = item.role === 'model' ? marked.parse(item.html) : item.html;
+        wrapper.appendChild(div);
+
         if (item.role === 'model') {
-          div.innerHTML = marked.parse(item.html);
-        } else {
-          div.innerHTML = item.html;
+          const actions = document.createElement('div');
+          actions.className = 'msg-actions';
+          actions.innerHTML = `<button class="copy-btn" onclick="copiarTexto(this)">📋 Copiar</button>`;
+          wrapper.appendChild(actions);
         }
-        chatBox.appendChild(div);
+
+        chatBox.appendChild(wrapper);
       });
+      autoScroll();
+    }
+
+    function autoScroll() {
+      const chatBox = document.getElementById('chatBox');
       chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function copiarTexto(btn) {
+      const msgDiv = btn.closest('.msg-wrapper').querySelector('.msg');
+      const texto = msgDiv.innerText;
+      navigator.clipboard.writeText(texto).then(() => {
+        btn.innerHTML = '✅ Copiado';
+        setTimeout(() => { btn.innerHTML = '📋 Copiar'; }, 2000);
+      });
     }
 
     function borrarHistorial() {
@@ -114,7 +150,7 @@
       localStorage.removeItem('gemini_ui_history');
       history = [];
       uiHistory = [];
-      document.getElementById('chatBox').innerHTML = `<div class="msg model">¡Hola! 👋 Envía una imagen o una pregunta para ayudarte.</div>`;
+      document.getElementById('chatBox').innerHTML = `<div class="msg-wrapper model"><div class="msg">¡Hola! 👋 Envía una imagen o una pregunta para ayudarte.</div></div>`;
     }
 
     document.getElementById('promptInput').addEventListener('keydown', (e) => {
@@ -204,7 +240,11 @@
         historyParts.push({ text: "[Imagen enviada por el usuario]" });
       }
 
-      chatBox.innerHTML += `<div class="msg user">${userHtml}</div>`;
+      // Render del mensaje del usuario
+      const userWrapper = document.createElement('div');
+      userWrapper.className = 'msg-wrapper user';
+      userWrapper.innerHTML = `<div class="msg">${userHtml}</div>`;
+      chatBox.appendChild(userWrapper);
       uiHistory.push({ role: 'user', html: userHtml });
 
       const payloadContents = [
@@ -218,11 +258,16 @@
       quitarImagen();
       sendBtn.disabled = true;
 
+      // Render del placeholder con animación "Escribiendo..."
+      const modelWrapper = document.createElement('div');
+      modelWrapper.className = 'msg-wrapper model';
+      
       const modelDiv = document.createElement('div');
-      modelDiv.className = 'msg model';
-      modelDiv.innerHTML = '...';
-      chatBox.appendChild(modelDiv);
-      chatBox.scrollTop = chatBox.scrollHeight;
+      modelDiv.className = 'msg';
+      modelDiv.innerHTML = `<div class="typing-dots"><span></span><span></span><span></span></div>`;
+      modelWrapper.appendChild(modelDiv);
+      chatBox.appendChild(modelWrapper);
+      autoScroll();
 
       try {
         const res = await fetch('https://mi-backend-gemini.vercel.app/api/generate', {
@@ -246,8 +291,14 @@
 
           accumulatedText += decoder.decode(value, { stream: true });
           modelDiv.innerHTML = marked.parse(accumulatedText);
-          chatBox.scrollTop = chatBox.scrollHeight;
+          autoScroll();
         }
+
+        // Agregar botón de copiar tras completar la respuesta
+        const actions = document.createElement('div');
+        actions.className = 'msg-actions';
+        actions.innerHTML = `<button class="copy-btn" onclick="copiarTexto(this)">📋 Copiar</button>`;
+        modelWrapper.appendChild(actions);
 
         history.push({ role: 'model', parts: [{ text: accumulatedText }] });
         uiHistory.push({ role: 'model', html: accumulatedText });
@@ -258,7 +309,7 @@
         modelDiv.innerText = `Error: ${error.message}`;
       } finally {
         sendBtn.disabled = false;
-        chatBox.scrollTop = chatBox.scrollHeight;
+        autoScroll();
       }
     }
   </script>
