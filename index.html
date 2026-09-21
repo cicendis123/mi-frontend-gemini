@@ -1,4 +1,299 @@
-async function enviarConsulta() {
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Asistente Gemini Multimodal</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+    
+    /* Layout principal */
+    .app-container { width: 100%; max-width: 950px; height: 85vh; display: flex; background: #1e293b; border-radius: 16px; overflow: hidden; border: 1px solid #334155; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+    
+    /* Barra Lateral (Sidebar) */
+    .sidebar { width: 260px; background: #0f172a; border-right: 1px solid #334155; display: flex; flex-direction: column; padding: 16px; gap: 12px; }
+    .new-chat-btn { background: #2563eb; color: #fff; border: none; padding: 12px 14px; border-radius: 8px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: background 0.2s; }
+    .new-chat-btn:hover { background: #1d4ed8; }
+    
+    .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .chat-item { padding: 10px 12px; border-radius: 8px; font-size: 13px; color: #94a3b8; cursor: pointer; display: flex; align-items: center; justify-content: space-between; transition: all 0.2s; background: transparent; }
+    .chat-item:hover { background: #1e293b; color: #f8fafc; }
+    .chat-item.active { background: #334155; color: #ffffff; font-weight: 600; }
+    .chat-item-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
+    .delete-chat-btn { color: #ef4444; opacity: 0; transition: opacity 0.2s; cursor: pointer; font-size: 12px; }
+    .chat-item:hover .delete-chat-btn { opacity: 1; }
+
+    /* Área principal de Chat */
+    .chat-card { flex: 1; display: flex; flex-direction: column; }
+    .chat-header { padding: 18px 24px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
+    .header-info { display: flex; align-items: center; gap: 12px; }
+    .status-dot { width: 10px; height: 10px; background-color: #10b981; border-radius: 50%; display: inline-block; }
+    
+    .chat-box { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; scroll-behavior: smooth; }
+    .msg-wrapper { display: flex; flex-direction: column; max-width: 80%; }
+    .msg-wrapper.user { align-self: flex-end; }
+    .msg-wrapper.model { align-self: flex-start; }
+
+    .msg { padding: 12px 16px; border-radius: 14px; font-size: 15px; line-height: 1.5; word-break: break-word; position: relative; }
+    .user .msg { background: #2563eb; color: #ffffff; border-bottom-right-radius: 2px; }
+    .model .msg { background: #334155; color: #f1f5f9; border-bottom-left-radius: 2px; }
+    .model .msg p { margin-bottom: 8px; }
+    .model .msg p:last-child { margin-bottom: 0; }
+    .img-preview { max-width: 100%; max-height: 200px; border-radius: 8px; margin-bottom: 8px; display: block; object-fit: contain; }
+
+    /* Acciones del mensaje */
+    .msg-actions { display: flex; gap: 8px; margin-top: 4px; align-self: flex-start; }
+    .copy-btn { background: transparent; border: none; color: #64748b; font-size: 12px; cursor: pointer; display: flex; align-items: center; gap: 4px; padding: 2px 6px; border-radius: 4px; transition: color 0.2s; }
+    .copy-btn:hover { color: #94a3b8; background: #33415555; }
+    
+    /* Indicador "Escribiendo..." */
+    .typing-dots { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; }
+    .typing-dots span { width: 6px; height: 6px; background-color: #94a3b8; border-radius: 50%; animation: blink 1.4s infinite ease-in-out both; }
+    .typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-dots span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); } 40% { opacity: 1; transform: scale(1.2); } }
+
+    /* Barra de previsualización de archivo */
+    .preview-bar { padding: 8px 16px; background: #0f172a; display: none; align-items: center; gap: 10px; border-top: 1px solid #334155; }
+    .preview-bar img { height: 40px; border-radius: 6px; }
+    .remove-img { color: #ef4444; cursor: pointer; font-weight: bold; font-size: 14px; margin-left: auto; }
+
+    /* Contenedor de entrada */
+    .input-container { padding: 16px; background: #0f172a; border-top: 1px solid #334155; display: flex; gap: 8px; align-items: center; }
+    textarea { flex: 1; height: 48px; background: #1e293b; border: 1px solid #475569; border-radius: 10px; color: #fff; padding: 12px; font-size: 14px; resize: none; outline: none; transition: border 0.2s; }
+    textarea:focus { border-color: #3b82f6; }
+    
+    .file-btn { background: #334155; color: white; border: none; padding: 12px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .file-btn:hover { background: #475569; }
+    button { background: #2563eb; color: white; border: none; padding: 0 20px; height: 48px; border-radius: 10px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #1d4ed8; }
+    button:disabled { background: #475569; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <div class="app-container">
+    <!-- BARRA LATERAL -->
+    <div class="sidebar">
+      <button class="new-chat-btn" onclick="crearNuevoChat()">➕ Nuevo Chat</button>
+      <div class="chat-list" id="chatList"></div>
+    </div>
+
+    <!-- ÁREA DE CHAT -->
+    <div class="chat-card">
+      <div class="chat-header">
+        <div class="header-info">
+          <span class="status-dot"></span>
+          <h3 style="font-size: 16px; font-weight: 600;">Gemini Assistant (Multimodal)</h3>
+        </div>
+      </div>
+
+      <div class="chat-box" id="chatBox"></div>
+
+      <div class="preview-bar" id="previewBar">
+        <img id="imgPreview" src="" alt="Vista previa">
+        <span style="font-size: 12px; color: #94a3b8;">Imagen lista</span>
+        <span class="remove-img" onclick="quitarImagen()">✕</span>
+      </div>
+
+      <div class="input-container">
+        <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="seleccionarImagen(event)">
+        <button class="file-btn" onclick="document.getElementById('fileInput').click()">📷</button>
+        <textarea id="promptInput" placeholder="Escribe un mensaje..."></textarea>
+        <button id="sendBtn" onclick="enviarConsulta()">Enviar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let sessions = [];
+    let activeChatId = null;
+    let selectedImageData = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedSessions = localStorage.getItem('gemini_sessions');
+      if (savedSessions) {
+        sessions = JSON.parse(savedSessions);
+      }
+
+      if (sessions.length === 0) {
+        crearNuevoChat(false);
+      } else {
+        activeChatId = sessions[0].id;
+        renderSidebar();
+        cargarChatActivo();
+      }
+    });
+
+    function guardarEnLocalStorage() {
+      localStorage.setItem('gemini_sessions', JSON.stringify(sessions));
+    }
+
+    function crearNuevoChat(render = true) {
+      const newId = Date.now().toString();
+      const newSession = {
+        id: newId,
+        title: 'Nuevo Chat',
+        history: [],
+        uiHistory: []
+      };
+      sessions.unshift(newSession);
+      activeChatId = newId;
+      guardarEnLocalStorage();
+
+      if (render) {
+        renderSidebar();
+        cargarChatActivo();
+      }
+    }
+
+    function seleccionarChat(id) {
+      activeChatId = id;
+      renderSidebar();
+      cargarChatActivo();
+    }
+
+    function eliminarChat(e, id) {
+      e.stopPropagation();
+      sessions = sessions.filter(s => s.id !== id);
+      
+      if (sessions.length === 0) {
+        crearNuevoChat(false);
+      } else if (activeChatId === id) {
+        activeChatId = sessions[0].id;
+      }
+
+      guardarEnLocalStorage();
+      renderSidebar();
+      cargarChatActivo();
+    }
+
+    function renderSidebar() {
+      const chatList = document.getElementById('chatList');
+      chatList.innerHTML = '';
+
+      sessions.forEach(session => {
+        const item = document.createElement('div');
+        item.className = `chat-item ${session.id === activeChatId ? 'active' : ''}`;
+        item.onclick = () => seleccionarChat(session.id);
+
+        item.innerHTML = `
+          <span class="chat-item-title">${session.title}</span>
+          <span class="delete-chat-btn" onclick="eliminarChat(event, '${session.id}')">✕</span>
+        `;
+        chatList.appendChild(item);
+      });
+    }
+
+    function cargarChatActivo() {
+      const activeSession = sessions.find(s => s.id === activeChatId);
+      const chatBox = document.getElementById('chatBox');
+      chatBox.innerHTML = '';
+
+      if (!activeSession || activeSession.uiHistory.length === 0) {
+        chatBox.innerHTML = `<div class="msg-wrapper model"><div class="msg">¡Hola! 👋 Envía una imagen o una pregunta para ayudarte.</div></div>`;
+        return;
+      }
+
+      activeSession.uiHistory.forEach(item => {
+        const wrapper = document.createElement('div');
+        wrapper.className = `msg-wrapper ${item.role}`;
+        
+        const div = document.createElement('div');
+        div.className = 'msg';
+        div.innerHTML = item.role === 'model' ? marked.parse(item.html) : item.html;
+        wrapper.appendChild(div);
+
+        if (item.role === 'model') {
+          const actions = document.createElement('div');
+          actions.className = 'msg-actions';
+          actions.innerHTML = `<button class="copy-btn" onclick="copiarTexto(this)">📋 Copiar</button>`;
+          wrapper.appendChild(actions);
+        }
+
+        chatBox.appendChild(wrapper);
+      });
+      autoScroll();
+    }
+
+    function autoScroll() {
+      const chatBox = document.getElementById('chatBox');
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function copiarTexto(btn) {
+      const msgDiv = btn.closest('.msg-wrapper').querySelector('.msg');
+      const texto = msgDiv.innerText;
+      navigator.clipboard.writeText(texto).then(() => {
+        btn.innerHTML = '✅ Copiado';
+        setTimeout(() => { btn.innerHTML = '📋 Copiar'; }, 2000);
+      });
+    }
+
+    document.getElementById('promptInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        enviarConsulta();
+      }
+    });
+
+    function seleccionarImagen(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const MAX_SIZE = 600;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.5);
+          const base64String = compressedDataUrl.split(',')[1];
+
+          selectedImageData = {
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64String
+            }
+          };
+
+          document.getElementById('imgPreview').src = compressedDataUrl;
+          document.getElementById('previewBar').style.display = 'flex';
+        };
+        img.src = evt.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function quitarImagen() {
+      selectedImageData = null;
+      document.getElementById('fileInput').value = '';
+      document.getElementById('previewBar').style.display = 'none';
+    }
+
+    async function enviarConsulta() {
       const input = document.getElementById('promptInput');
       const prompt = input.value.trim();
       const chatBox = document.getElementById('chatBox');
@@ -65,7 +360,6 @@ async function enviarConsulta() {
           body: JSON.stringify({ contents: payloadContents })
         });
 
-        // Si la respuesta devuelve un error JSON
         if (!res.ok) {
           const errData = await res.json().catch(() => null);
           throw new Error(errData?.error || `Error ${res.status}: Servidor no disponible`);
@@ -81,7 +375,7 @@ async function enviarConsulta() {
           if (done) break;
 
           if (isFirstChunk) {
-            modelDiv.innerHTML = ''; // Elimina la animación "Escribiendo..." al recibir el primer dato
+            modelDiv.innerHTML = '';
             isFirstChunk = false;
           }
 
@@ -113,3 +407,6 @@ async function enviarConsulta() {
         autoScroll();
       }
     }
+  </script>
+</body>
+</html>
