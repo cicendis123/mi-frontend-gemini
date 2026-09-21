@@ -5,6 +5,31 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mi Asistente Gemini Multimodal</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  
+  <!-- SDKs de Firebase (v10 modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getFirestore, collection, doc, setDoc, deleteDoc, query, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+    // ⚠️ COLOCA AQUÍ LAS CLAVES OBTENIDAS EN LA CONSOLA DE FIREBASE
+    const firebaseConfig = {
+      apiKey: "AIzaSyBkAsPlv1cjXNKXUQFHA6xSYgl9GBVs4-c",
+      authDomain: "mi-asistente-gemini-f8ad0.firebaseapp.com",
+      projectId: "mi-asistente-gemini-f8ad0",
+      storageBucket: "mi-asistente-gemini-f8ad0.firebasestorage.app",
+      messagingSenderId: "540021227259",
+      appId: "1:540021227259:web:74b05e417e5d65ba8efa5e"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    window.firebaseAuth = { auth, db, provider, signInWithPopup, signOut, onAuthStateChanged, collection, doc, setDoc, deleteDoc, query, onSnapshot };
+  </script>
+
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
     body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -22,6 +47,13 @@
     .chat-item-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px; }
     .delete-chat-btn { color: #ef4444; opacity: 0; transition: opacity 0.2s; cursor: pointer; font-size: 12px; }
     .chat-item:hover .delete-chat-btn { opacity: 1; }
+
+    .user-profile { border-top: 1px solid #334155; padding-top: 12px; display: flex; align-items: center; justify-content: space-between; }
+    .user-info { display: flex; align-items: center; gap: 8px; overflow: hidden; }
+    .user-avatar { width: 32px; height: 32px; border-radius: 50%; }
+    .user-name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .auth-btn { background: #334155; color: white; border: none; padding: 6px 10px; border-radius: 6px; font-size: 12px; cursor: pointer; }
+    .auth-btn:hover { background: #475569; }
 
     .chat-card { flex: 1; display: flex; flex-direction: column; }
     .chat-header { padding: 18px 24px; background: #0f172a; border-bottom: 1px solid #334155; display: flex; align-items: center; justify-content: space-between; }
@@ -71,6 +103,11 @@
     <div class="sidebar">
       <button class="new-chat-btn" onclick="crearNuevoChat()">➕ Nuevo Chat</button>
       <div class="chat-list" id="chatList"></div>
+      
+      <!-- PERFIL DE USUARIO / AUTENTICACIÓN -->
+      <div class="user-profile" id="userProfile">
+        <button class="new-chat-btn" style="width: 100%;" onclick="iniciarSesion()">🔑 Iniciar con Google</button>
+      </div>
     </div>
 
     <div class="chat-card">
@@ -102,24 +139,98 @@
     let sessions = [];
     let activeChatId = null;
     let selectedImageData = null;
+    let currentUser = null;
 
     window.addEventListener('DOMContentLoaded', () => {
-      const savedSessions = localStorage.getItem('gemini_sessions');
-      if (savedSessions) {
-        sessions = JSON.parse(savedSessions);
-      }
-
-      if (sessions.length === 0) {
-        crearNuevoChat(false);
-      } else {
-        activeChatId = sessions[0].id;
-        renderSidebar();
-        cargarChatActivo();
-      }
+      const checkFb = setInterval(() => {
+        if (window.firebaseAuth) {
+          clearInterval(checkFb);
+          initFirebaseEvents();
+        }
+      }, 100);
     });
 
-    function guardarEnLocalStorage() {
-      localStorage.setItem('gemini_sessions', JSON.stringify(sessions));
+    function initFirebaseEvents() {
+      const { auth, onAuthStateChanged } = window.firebaseAuth;
+      
+      onAuthStateChanged(auth, (user) => {
+        currentUser = user;
+        renderUserProfile();
+        if (user) {
+          cargarChatsFirebase();
+        } else {
+          sessions = [];
+          crearNuevoChat(false);
+        }
+      });
+    }
+
+    async function iniciarSesion() {
+      const { auth, provider, signInWithPopup } = window.firebaseAuth;
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (err) {
+        console.error("Error al iniciar sesión:", err);
+      }
+    }
+
+    async function cerrarSesion() {
+      const { auth, signOut } = window.firebaseAuth;
+      await signOut(auth);
+    }
+
+    function renderUserProfile() {
+      const profileDiv = document.getElementById('userProfile');
+      if (currentUser) {
+        profileDiv.innerHTML = `
+          <div class="user-info">
+            <img src="${currentUser.photoURL}" class="user-avatar" alt="Avatar">
+            <span class="user-name">${currentUser.displayName}</span>
+          </div>
+          <button class="auth-btn" onclick="cerrarSesion()">Salir</button>
+        `;
+      } else {
+        profileDiv.innerHTML = `<button class="new-chat-btn" style="width: 100%;" onclick="iniciarSesion()">🔑 Iniciar con Google</button>`;
+      }
+    }
+
+    async function guardarChatEnFirebase(session) {
+      if (!currentUser) return;
+      const { db, doc, setDoc } = window.firebaseAuth;
+      try {
+        await setDoc(doc(db, "users", currentUser.uid, "chats", session.id), {
+          id: session.id,
+          title: session.title,
+          history: session.history,
+          uiHistory: session.uiHistory,
+          updatedAt: Date.now()
+        });
+      } catch (e) {
+        console.error("Error guardando chat en Firebase:", e);
+      }
+    }
+
+    function cargarChatsFirebase() {
+      const { db, collection, onSnapshot, query } = window.firebaseAuth;
+      const q = query(collection(db, "users", currentUser.uid, "chats"));
+
+      onSnapshot(q, (snapshot) => {
+        sessions = [];
+        snapshot.forEach((doc) => {
+          sessions.push(doc.data());
+        });
+
+        sessions.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+
+        if (sessions.length === 0) {
+          crearNuevoChat(false);
+        } else if (!activeChatId || !sessions.find(s => s.id === activeChatId)) {
+          activeChatId = sessions[0].id;
+        }
+
+        renderSidebar();
+        cargarChatActivo();
+      });
     }
 
     function crearNuevoChat(render = true) {
@@ -128,11 +239,15 @@
         id: newId,
         title: 'Nuevo Chat',
         history: [],
-        uiHistory: []
+        uiHistory: [],
+        updatedAt: Date.now()
       };
       sessions.unshift(newSession);
       activeChatId = newId;
-      guardarEnLocalStorage();
+
+      if (currentUser) {
+        guardarChatEnFirebase(newSession);
+      }
 
       if (render) {
         renderSidebar();
@@ -146,17 +261,21 @@
       cargarChatActivo();
     }
 
-    function eliminarChat(e, id) {
+    async function eliminarChat(e, id) {
       e.stopPropagation();
       sessions = sessions.filter(s => s.id !== id);
       
+      if (currentUser) {
+        const { db, doc, deleteDoc } = window.firebaseAuth;
+        await deleteDoc(doc(db, "users", currentUser.uid, "chats", id));
+      }
+
       if (sessions.length === 0) {
         crearNuevoChat(false);
       } else if (activeChatId === id) {
         activeChatId = sessions[0].id;
       }
 
-      guardarEnLocalStorage();
       renderSidebar();
       cargarChatActivo();
     }
@@ -387,7 +506,8 @@
         activeSession.history.push({ role: 'user', parts: historyParts });
         activeSession.history.push({ role: 'model', parts: [{ text: accumulatedText }] });
         activeSession.uiHistory.push({ role: 'model', html: accumulatedText });
-        guardarEnLocalStorage();
+        
+        guardarChatEnFirebase(activeSession);
 
       } catch (error) {
         console.error(error);
